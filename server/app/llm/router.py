@@ -1,5 +1,5 @@
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -16,7 +16,7 @@ router = APIRouter()
 class SuggestionRequest(BaseModel):
     contact_name: str
     platform: str = "whatsapp"  # "whatsapp" | "instagram"
-    recent_messages: List[Dict[str, any]]  # [{"speaker": "Alex", "text": "Are you coming tonight?", "is_user": False}]
+    recent_messages: List[Dict[str, Any]]  # [{"speaker": "Alex", "text": "Are you coming tonight?", "is_user": False}]
     max_suggestions: int = 3
 
 

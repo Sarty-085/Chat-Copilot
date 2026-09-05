@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import httpx
 
 
@@ -72,7 +72,7 @@ class OllamaClient:
             suggestions = ["Got it!", "Sounds good", "Will check and let you know"]
         return suggestions[:3]
 
-    async def ping(self) -> Dict[str, any]:
+    async def ping(self) -> Dict[str, Any]:
         """Tests connection to local Ollama service."""
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
