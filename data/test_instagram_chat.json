@@ -1,0 +1,34 @@
+{
+  "participants": [
+    { "name": "Alex" },
+    { "name": "You" }
+  ],
+  "messages": [
+    {
+      "sender_name": "Alex",
+      "timestamp_ms": 1710240000000,
+      "content": "Check this reel out bro",
+      "share": { "link": "https://www.instagram.com/reel/C123" }
+    },
+    {
+      "sender_name": "You",
+      "timestamp_ms": 1710240120000,
+      "content": "lmao this is too accurate 😂",
+      "reactions": [
+        { "reaction": "❤️", "actor": "Alex" }
+      ]
+    },
+    {
+      "sender_name": "Alex",
+      "timestamp_ms": 1710240200000,
+      "content": "right?? reminded me of our road trip"
+    },
+    {
+      "sender_name": "You",
+      "timestamp_ms": 1710240300000,
+      "content": "haha 100% man we gotta do that again soon"
+    }
+  ],
+  "title": "Alex",
+  "is_still_participant": true
+}
