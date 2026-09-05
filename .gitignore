@@ -65,8 +65,11 @@ venv.bak/
 *.sqlite3
 data/*.db
 server/data/*.db
+server/data/settings.json
+data/settings.json
 
 # Android & Gradle
+*.apk
 .gradle/
 build/
 android/.gradle/
