@@ -53,36 +53,22 @@ def parse_instagram_json(
         raw_content = fix_meta_mojibake(msg.get("content", ""))
         media_flag = None
 
-        # Process shared media & placeholders
-        text = raw_content
+        # Ignore non-text media shares (posts, reels, photos, videos, story shares)
+        if msg.get("photos") or msg.get("videos") or msg.get("audio_files"):
+            continue
 
-        if msg.get("photos"):
-            media_flag = "image"
-            text = f"{text} [shared a photo]".strip()
-        elif msg.get("videos"):
-            media_flag = "video"
-            text = f"{text} [shared a video]".strip()
-        elif msg.get("audio_files"):
-            media_flag = "audio"
-            text = f"{text} [voice note]".strip()
-        elif msg.get("share"):
-            media_flag = "shared_post"
-            share_text = fix_meta_mojibake(msg.get("share", {}).get("link", "post"))
-            text = f"{text} [shared {share_text}]".strip()
+        if msg.get("share"):
+            # Shared post or reel
+            continue
 
-        # Process reactions
-        reactions = msg.get("reactions", [])
-        if reactions:
-            rxn_parts = []
-            for rxn in reactions:
-                actor = fix_meta_mojibake(rxn.get("actor", ""))
-                emoji = fix_meta_mojibake(rxn.get("reaction", "❤️"))
-                rxn_parts.append(f"{actor} reacted with {emoji}")
-            rxn_str = f" [{', '.join(rxn_parts)}]"
-            text = f"{text}{rxn_str}".strip()
+        # Filter out empty or pure link messages (e.g. reel links)
+        if not raw_content or not raw_content.strip():
+            continue
 
-        if not text:
-            # Empty non-text event (e.g. call log)
+        text = raw_content.strip()
+
+        # Check if the content is just an Instagram link or reel
+        if text.startswith("http://") or text.startswith("https://") or "instagram.com/reel" in text.lower() or "instagram.com/p/" in text.lower() or "instagram.com/stories" in text.lower():
             continue
 
         is_user = False

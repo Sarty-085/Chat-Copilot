@@ -18,20 +18,29 @@ def test_instagram_parsing_reactions_and_shares():
                 "sender_name": "Jordan",
                 "timestamp_ms": 1705328500000,
                 "content": "haha this is gold",
-                "reactions": [{"reaction": "😂", "actor": "Alex Rivera"}]
             },
             {
                 "sender_name": "Alex Rivera",
                 "timestamp_ms": 1705328600000,
                 "photos": [{"uri": "photos/photo1.jpg"}]
+            },
+            {
+                "sender_name": "Alex Rivera",
+                "timestamp_ms": 1705328700000,
+                "content": "https://www.instagram.com/reel/XYZ"
+            },
+            {
+                "sender_name": "Alex Rivera",
+                "timestamp_ms": 1705328800000,
+                "content": "are you free tomorrow?"
             }
         ]
     }
 
     messages = parse_instagram_json(sample_data, user_name="Jordan", contact_name="Alex Rivera")
-    assert len(messages) == 3
-    assert messages[0].sender_raw == "Alex Rivera"
-    assert "[shared https://www.instagram.com/reel/123]" in messages[0].text
-    assert messages[1].is_user is True
-    assert "Alex Rivera reacted with 😂" in messages[1].text
-    assert "[shared a photo]" in messages[2].text
+    # Only the genuine text messages "haha this is gold" and "are you free tomorrow?" should be kept!
+    assert len(messages) == 2
+    assert messages[0].text == "haha this is gold"
+    assert messages[0].is_user is True
+    assert messages[1].text == "are you free tomorrow?"
+    assert messages[1].is_user is False

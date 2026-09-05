@@ -51,7 +51,7 @@ class FloatingBubbleService : Service() {
 
     private val apiClient by lazy {
         val prefs = getSharedPreferences("chatpilot_prefs", Context.MODE_PRIVATE)
-        val serverIp = prefs.getString("server_ip", "10.0.2.2") ?: "10.0.2.2"
+        val serverIp = prefs.getString("server_ip", "192.168.1.2") ?: "192.168.1.2"
         val serverPort = prefs.getString("server_port", "8000") ?: "8000"
         ApiClient { "http://$serverIp:$serverPort" }
     }

@@ -1,6 +1,8 @@
 package com.chatpilot.app.ui.screens
 
 import android.content.Context
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -11,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,13 +30,13 @@ import com.chatpilot.app.ui.theme.*
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(onOpenPermissions: (() -> Unit)? = null) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val prefs = context.getSharedPreferences("chatpilot_prefs", Context.MODE_PRIVATE)
 
     var backendMode by remember { mutableStateOf(prefs.getString("backend_mode", "local") ?: "local") }
-    var serverIp by remember { mutableStateOf(prefs.getString("server_ip", "192.168.1.100") ?: "192.168.1.100") }
+    var serverIp by remember { mutableStateOf(prefs.getString("server_ip", "192.168.1.2") ?: "192.168.1.2") }
     var serverPort by remember { mutableStateOf(prefs.getString("server_port", "8000") ?: "8000") }
     var localModel by remember { mutableStateOf(prefs.getString("local_model", "llama3.2:3b") ?: "llama3.2:3b") }
 
@@ -53,7 +56,7 @@ fun SettingsScreen() {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Inference & Connectivity",
+            text = "Inference & Settings",
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
             color = TextPrimary
@@ -106,7 +109,7 @@ fun SettingsScreen() {
                     OutlinedTextField(
                         value = serverIp,
                         onValueChange = { serverIp = it },
-                        label = { Text("Laptop IP on Wi-Fi (e.g. 192.168.x.x)") },
+                        label = { Text("Laptop IP on Wi-Fi (e.g. 192.168.1.2)") },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = PrimaryIndigo,
@@ -120,7 +123,7 @@ fun SettingsScreen() {
                     OutlinedTextField(
                         value = serverPort,
                         onValueChange = { serverPort = it },
-                        label = { Text("Server Port") },
+                        label = { Text("Server Port (default 8000)") },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = PrimaryIndigo,
@@ -134,7 +137,7 @@ fun SettingsScreen() {
                     OutlinedTextField(
                         value = localModel,
                         onValueChange = { localModel = it },
-                        label = { Text("Ollama Model Tag") },
+                        label = { Text("Ollama Model Tag (e.g. llama3.2:3b)") },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = PrimaryIndigo,
@@ -149,8 +152,8 @@ fun SettingsScreen() {
                         onClick = {
                             coroutineScope.launch {
                                 isTesting = true
-                                pingResult = "Pinging http://$serverIp:$serverPort/v1/health..."
-                                val client = ApiClient { "http://$serverIp:$serverPort" }
+                                pingResult = "Pinging http://${serverIp.trim()}:${serverPort.trim()}/v1/health..."
+                                val client = ApiClient { "http://${serverIp.trim()}:${serverPort.trim()}" }
                                 val res = client.checkHealth()
                                 pingResult = if (res.isSuccess) {
                                     val health = res.getOrNull()
@@ -196,14 +199,13 @@ fun SettingsScreen() {
                         Text(text = "Cloud Fallback Provider", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                     }
 
-                    // Provider dropdown or radios
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("gemini", "openai", "anthropic").forEach { prov ->
                             val isSel = cloudProvider == prov
                             FilterChip(
                                 selected = isSel,
                                 onClick = { cloudProvider = prov },
-                                label = { Text(prov.capitalize()) },
+                                label = { Text(prov.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }) },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = PrimaryIndigo,
                                     selectedLabelColor = TextPrimary
@@ -235,11 +237,11 @@ fun SettingsScreen() {
             onClick = {
                 prefs.edit().apply {
                     putString("backend_mode", backendMode)
-                    putString("server_ip", serverIp)
-                    putString("server_port", serverPort)
-                    putString("local_model", localModel)
+                    putString("server_ip", serverIp.trim())
+                    putString("server_port", serverPort.trim())
+                    putString("local_model", localModel.trim())
                     putString("cloud_provider", cloudProvider)
-                    putString("cloud_api_key", cloudApiKey)
+                    putString("cloud_api_key", cloudApiKey.trim())
                     apply()
                 }
                 saveMessage = "Settings saved successfully!"
@@ -255,6 +257,37 @@ fun SettingsScreen() {
 
         if (saveMessage != null) {
             Text(text = saveMessage ?: "", color = AccentEmerald, fontSize = 13.sp)
+        }
+
+        // System Permissions Access Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .border(1.dp, OutlineBorder, RoundedCornerShape(14.dp)),
+            colors = CardDefaults.cardColors(containerColor = SurfaceContainer)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "Android System Permissions", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                }
+                Text(
+                    text = "If reply suggestions or overlay bubbles stop appearing, review Android Notification Access & Overlay permissions.",
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+                if (onOpenPermissions != null) {
+                    OutlinedButton(
+                        onClick = onOpenPermissions,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Open Permissions Setup", color = PrimaryLight)
+                    }
+                }
+            }
         }
     }
 }
