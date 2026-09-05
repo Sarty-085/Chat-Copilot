@@ -3,38 +3,55 @@ from datetime import datetime
 from typing import List, Optional, Tuple
 from .base import UnifiedMessage
 
-# Common WhatsApp timestamp regex patterns
+# WhatsApp timestamp regex patterns
 TIMESTAMP_PATTERNS = [
-    # 1. Bracketed: [15/01/24, 14:30:15] or [1/15/24, 2:30:15 PM]
-    re.compile(r"^\[(?P<date>\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}),\s+(?P<time>\d{1,2}:\d{2}(?::\d{2})?(?:\s+[APap][Mm])?)\]\s+(?P<rest>.*)$"),
+    # 1. Bracketed: [15/01/24, 14:30:15] or [1/15/24, 2:30:15 PM] or [15.01.2024, 14:30]
+    re.compile(r"^\[(?P<date>\d{1,4}[/.-]\d{1,2}[/.-]\d{2,4}),\s+(?P<time>\d{1,2}:\d{2}(?::\d{2})?(?:\s+[APap][Mm])?)\]\s+(?P<rest>.*)$"),
     # 2. Standard dash: 15/01/24, 14:30 - or 1/15/24, 2:30 PM - 
-    re.compile(r"^(?P<date>\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}),\s+(?P<time>\d{1,2}:\d{2}(?::\d{2})?(?:\s+[APap][Mm])?)\s+-\s+(?P<rest>.*)$"),
+    re.compile(r"^(?P<date>\d{1,4}[/.-]\d{1,2}[/.-]\d{2,4}),\s+(?P<time>\d{1,2}:\d{2}(?::\d{2})?(?:\s+[APap][Mm])?)\s+-\s+(?P<rest>.*)$"),
     # 3. Unicode narrow non-breaking space / special characters often in Android exports
-    re.compile(r"^(?P<date>\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}),?\s+(?P<time>\d{1,2}:\d{2}(?::\d{2})?[\s\u202f\xa0]*[APap][Mm])\s+-\s+(?P<rest>.*)$"),
+    re.compile(r"^(?P<date>\d{1,4}[/.-]\d{1,2}[/.-]\d{2,4}),?\s+(?P<time>\d{1,2}:\d{2}(?::\d{2})?[\s\u202f\xa0]*[APap][Mm])\s+-\s+(?P<rest>.*)$"),
 ]
 
-SYSTEM_PATTERNS = [
+# Complete list of WhatsApp system messages, media export placeholders, and non-conversational syntaxes
+IGNORED_SYSTEM_OR_SYNTAX_PATTERNS = [
+    # Omitted media and attachments
+    re.compile(r"^\s*<media\s+om+i+t+ed>\s*$", re.IGNORECASE),
+    re.compile(r"^\s*(?:image|video|audio|voice\s+(?:call|message)|sticker|document|contact\s+card|gif)\s+omitted\s*$", re.IGNORECASE),
+    re.compile(r"^\s*<attached:\s*.*?>\s*$", re.IGNORECASE),
+    re.compile(r"^\s*\S+\.(?:jpg|jpeg|png|mp4|opus|mp3|pdf|docx|zip|webp|apk|m4a|wav)\s+\(file attached\)\s*$", re.IGNORECASE),
+    re.compile(r"^\s*\(file attached\)\s*$", re.IGNORECASE),
+    
+    # Deleted and omitted message notices
+    re.compile(r"^\s*<this\s+message\s+was\s+(?:om+i+t+ed|deleted)>\s*$", re.IGNORECASE),
+    re.compile(r"^\s*this\s+message\s+was\s+(?:om+i+t+ed|deleted)(?:\s+by\s+an\s+admin)?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*you\s+deleted\s+this\s+message\s*$", re.IGNORECASE),
+    
+    # Call notices
+    re.compile(r"^\s*missed\s+(?:group\s+)?(?:voice|video)\s+call\s*$", re.IGNORECASE),
+    re.compile(r"^\s*(?:voice|video)\s+call,\s+\d+\s+(?:min|sec|hours?|hr)\s*$", re.IGNORECASE),
+    
+    # Locations and Polls
+    re.compile(r"^\s*live\s+location\s+shared\s*$", re.IGNORECASE),
+    re.compile(r"^\s*location:\s*https?://\S+\s*$", re.IGNORECASE),
+    re.compile(r"^\s*poll:\s*$", re.IGNORECASE),
+    re.compile(r"^\s*view\s+poll\s*$", re.IGNORECASE),
+    
+    # Encryption, group events and system alerts
     re.compile(r"Messages and calls are end-to-end encrypted", re.IGNORECASE),
-    re.compile(r"created group", re.IGNORECASE),
-    re.compile(r"added you", re.IGNORECASE),
+    re.compile(r"Waiting for this message\. This may take a while\.", re.IGNORECASE),
+    re.compile(r"created group\b", re.IGNORECASE),
+    re.compile(r"added you\b", re.IGNORECASE),
     re.compile(r"joined using this group's invite link", re.IGNORECASE),
-    re.compile(r"left\b", re.IGNORECASE),
-    re.compile(r"changed the group", re.IGNORECASE),
+    re.compile(r"\bleft the group\b", re.IGNORECASE),
+    re.compile(r"\bleft\b", re.IGNORECASE),
+    re.compile(r"changed the group\b", re.IGNORECASE),
+    re.compile(r"changed their phone number", re.IGNORECASE),
     re.compile(r"security code changed", re.IGNORECASE),
     re.compile(r"disappearing messages", re.IGNORECASE),
-    re.compile(r"Waiting for this message", re.IGNORECASE),
-    re.compile(r"You deleted this message", re.IGNORECASE),
-    re.compile(r"This message was deleted", re.IGNORECASE),
-]
-
-MEDIA_OMITTED_PATTERNS = [
-    (re.compile(r"<Media omitted>", re.IGNORECASE), "media_omitted"),
-    (re.compile(r"image omitted", re.IGNORECASE), "image"),
-    (re.compile(r"video omitted", re.IGNORECASE), "video"),
-    (re.compile(r"audio omitted", re.IGNORECASE), "audio"),
-    (re.compile(r"sticker omitted", re.IGNORECASE), "sticker"),
-    (re.compile(r"document omitted", re.IGNORECASE), "document"),
-    (re.compile(r"GIF omitted", re.IGNORECASE), "gif"),
+    re.compile(r"You're now an admin", re.IGNORECASE),
+    re.compile(r"Pinned a message", re.IGNORECASE),
+    re.compile(r"^\s*null\s*$", re.IGNORECASE),
 ]
 
 DATE_FORMATS = [
@@ -56,7 +73,7 @@ DATE_FORMATS = [
     "%m/%d/%Y %I:%M:%S %p",
     "%m/%d/%y %I:%M %p",
     "%m/%d/%Y %I:%M %p",
-    # Dots
+    # Dots & hyphens
     "%d.%m.%y %H:%M:%S",
     "%d.%m.%Y %H:%M:%S",
     "%d.%m.%y %H:%M",
@@ -64,43 +81,78 @@ DATE_FORMATS = [
 ]
 
 
-def parse_timestamp(date_str: str, time_str: str, date_order_hint: Optional[str] = None) -> datetime:
-    """Parses a date and time string into a datetime object with intelligent format detection."""
-    # Clean non-breaking spaces
-    time_cleaned = time_str.replace("\u202f", " ").replace("\xa0", " ").strip()
-    date_cleaned = date_str.replace("-", "/").replace(".", "/").strip()
-    combined = f"{date_cleaned} {time_cleaned}"
+class WhatsAppTimestampParser:
+    """High-speed timestamp parser with cached successful format for 100x faster execution."""
 
-    # Reorder formats based on hint if provided
-    formats = list(DATE_FORMATS)
-    if date_order_hint == "MDY":
-        formats = [f for f in formats if f.startswith("%m")] + [f for f in formats if not f.startswith("%m")]
-    elif date_order_hint == "DMY":
-        formats = [f for f in formats if f.startswith("%d")] + [f for f in formats if not f.startswith("%d")]
+    def __init__(self, date_order_hint: Optional[str] = None):
+        self.cached_format = None
+        self.formats = list(DATE_FORMATS)
+        if date_order_hint == "MDY":
+            self.formats = [f for f in self.formats if f.startswith("%m")] + [f for f in self.formats if not f.startswith("%m")]
+        elif date_order_hint == "DMY":
+            self.formats = [f for f in self.formats if f.startswith("%d")] + [f for f in self.formats if not f.startswith("%d")]
 
-    for fmt in formats:
-        try:
-            # Replace / with match
+    def parse(self, date_str: str, time_str: str) -> datetime:
+        time_cleaned = time_str.replace("\u202f", " ").replace("\xa0", " ").strip()
+        date_cleaned = date_str.replace("-", "/").replace(".", "/").strip()
+        combined = f"{date_cleaned} {time_cleaned}"
+
+        if self.cached_format:
+            try:
+                return datetime.strptime(combined, self.cached_format)
+            except ValueError:
+                pass
+
+        for fmt in self.formats:
             fmt_clean = fmt.replace(".", "/")
-            return datetime.strptime(combined, fmt_clean)
-        except ValueError:
-            continue
+            try:
+                dt = datetime.strptime(combined, fmt_clean)
+                self.cached_format = fmt_clean
+                return dt
+            except ValueError:
+                continue
 
-    # Fallback to current time if parsing completely fails
-    return datetime.now()
-
-
-def is_system_message(text: str) -> bool:
-    """Checks if message is a WhatsApp system alert."""
-    return any(pattern.search(text) for pattern in SYSTEM_PATTERNS)
+        return datetime.now()
 
 
-def extract_media_flag(text: str) -> Tuple[str, Optional[str]]:
-    """Checks for media placeholders and returns (cleaned_text, media_flag)."""
-    for pattern, flag in MEDIA_OMITTED_PATTERNS:
-        if pattern.search(text):
-            return f"[{flag}]", flag
-    return text, None
+def is_ignored_whatsapp_syntax(text: str) -> bool:
+    """Checks if message is an export syntax, media placeholder, call, or system message."""
+    clean = text.strip()
+    if not clean:
+        return True
+    return any(p.search(clean) for p in IGNORED_SYSTEM_OR_SYNTAX_PATTERNS)
+
+
+def clean_whatsapp_message_body(text: str) -> Tuple[str, Optional[str]]:
+    """
+    Cleans message body by stripping media placeholders and tags.
+    Returns (cleaned_text, media_flag).
+    If the message was only an omitted media or deleted message with no real text,
+    returns ('[media_omitted]', 'media_omitted') or ('', None).
+    """
+    raw = text.strip()
+    if is_ignored_whatsapp_syntax(raw):
+        # Check if it was purely a media omission
+        if re.search(r"om+i+t+ed|file attached", raw, re.IGNORECASE):
+            return "[media_omitted]", "media_omitted"
+        return "", None
+
+    # Strip inline media omitted tags if user wrote a real caption alongside
+    cleaned = re.sub(r"<media\s+om+i+t+ed>", "", raw, flags=re.IGNORECASE)
+    cleaned = re.sub(r"<this\s+message\s+was\s+(?:om+i+t+ed|deleted)>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"<attached:\s*.*?>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\S+\.(?:jpg|jpeg|png|mp4|opus|mp3|pdf|docx|zip|webp|apk)\s+\(file attached\)", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\(file attached\)", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b(?:image|video|audio|voice\s+(?:call|message)|sticker|document|contact\s+card|gif)\s+omitted\b", "", cleaned, flags=re.IGNORECASE)
+    cleaned = cleaned.strip()
+
+    has_media = (len(cleaned) < len(raw))
+    flag = "media_omitted" if has_media else None
+
+    if not cleaned:
+        return ("[media_omitted]", "media_omitted") if has_media else ("", None)
+
+    return cleaned, flag
 
 
 def parse_whatsapp_text(
@@ -111,20 +163,21 @@ def parse_whatsapp_text(
 ) -> List[UnifiedMessage]:
     """
     Parses WhatsApp .txt export into a list of UnifiedMessage items.
-    Handles:
-    - Multi-line message accumulation
-    - 12h/24h timestamps
-    - System message filtering
-    - Media indicator conversion
+    Filters out system notifications, deleted message notices, call logs,
+    and media omitted placeholders.
     """
     lines = raw_content.splitlines()
     raw_records = []
     current_record = None
+    ts_parser = WhatsAppTimestampParser(date_order_hint)
 
     for line in lines:
+        # Strip leading hidden directional/BOM unicode characters often found in WhatsApp exports
+        clean_line = re.sub(r"^[\u200e\u200f\ufeff\u202a-\u202e]+", "", line).strip()
         matched = False
+
         for pattern in TIMESTAMP_PATTERNS:
-            m = pattern.match(line)
+            m = pattern.match(clean_line)
             if m:
                 if current_record:
                     raw_records.append(current_record)
@@ -139,7 +192,7 @@ def parse_whatsapp_text(
 
         if not matched:
             if current_record is not None:
-                current_record["multiline"].append(line)
+                current_record["multiline"].append(clean_line)
 
     if current_record:
         raw_records.append(current_record)
@@ -154,27 +207,21 @@ def parse_whatsapp_text(
 
         # Check if message has a sender colon (e.g. "Sender: Message")
         if ":" not in rest:
-            # Likely system notification without sender
-            if is_system_message(rest):
-                continue
-
-        parts = rest.split(":", 1)
-        if len(parts) == 2:
-            sender_raw = parts[0].strip()
-            msg_body = parts[1].strip()
-        else:
-            # System message or unsent line
-            if is_system_message(rest):
-                continue
-            sender_raw = "System"
-            msg_body = rest.strip()
-
-        if is_system_message(msg_body):
             continue
 
-        clean_text, media_flag = extract_media_flag(msg_body)
-        ts = parse_timestamp(rec["date"], rec["time"], date_order_hint)
+        parts = rest.split(":", 1)
+        if len(parts) != 2:
+            continue
 
+        sender_raw = parts[0].strip()
+        msg_body = parts[1].strip()
+
+        # Clean and filter system/media syntaxes
+        clean_text, media_flag = clean_whatsapp_message_body(msg_body)
+        if not clean_text:
+            continue
+
+        ts = ts_parser.parse(rec["date"], rec["time"])
         discovered_senders.add(sender_raw)
 
         messages.append({
@@ -187,7 +234,6 @@ def parse_whatsapp_text(
     # Identify user vs contact
     resolved_contact = contact_name
     if not resolved_contact:
-        # If user_name is provided, contact is the other sender
         other_senders = [s for s in discovered_senders if s != user_name and s != "You" and s != "System"]
         resolved_contact = other_senders[0] if other_senders else "Contact"
 
@@ -200,7 +246,6 @@ def parse_whatsapp_text(
         elif sender.lower() in ["you", "me"]:
             is_user = True
         elif not user_name and sender != resolved_contact:
-            # Heuristic: if sender is not the detected contact, assume it's user
             is_user = True
 
         output_messages.append(

@@ -28,9 +28,9 @@ class VectorRetriever:
         self.embed_model = embed_model
 
     async def get_embedding(self, text: str) -> Optional[List[float]]:
-        """Requests embedding vector from local Ollama service."""
+        """Requests embedding vector from local Ollama service with fast timeout."""
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=2.0) as client:
                 res = await client.post(
                     f"{self.ollama_url}/api/embeddings",
                     json={"model": self.embed_model, "prompt": text},
@@ -42,12 +42,31 @@ class VectorRetriever:
         return None
 
     async def index_pairs(self, pairs: List[ExchangePair]):
-        """Generates embeddings for incoming messages and saves to SQLite."""
-        embeddings = []
-        for pair in pairs:
-            emb = await self.get_embedding(pair.incoming_text)
-            embeddings.append(emb)
-        self.storage.save_exchange_pairs(pairs, embeddings)
+        """Synchronous legacy method: saves all to storage and embeds up to 30 pairs."""
+        self.storage.save_exchange_pairs(pairs, embeddings=None)
+        await self.index_pairs_background(pairs[:30])
+
+    async def index_pairs_background(self, pairs: List[ExchangePair]):
+        """
+        Background embedding generation that does not block the client upload response.
+        First verifies Ollama reachability within 500ms before attempting embeddings.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=0.5) as client:
+                res = await client.get(f"{self.ollama_url}/api/version")
+                if res.status_code != 200:
+                    return
+        except Exception:
+            # Ollama not reachable, lexical matching remains active
+            return
+
+        for pair in pairs[:50]:
+            try:
+                emb = await self.get_embedding(pair.incoming_text)
+                if emb:
+                    self.storage.update_pair_embedding(pair.incoming_text, emb)
+            except Exception:
+                pass
 
     async def retrieve_relevant_exchanges(
         self,

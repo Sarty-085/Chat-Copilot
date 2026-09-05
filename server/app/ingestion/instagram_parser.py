@@ -1,7 +1,20 @@
 import json
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from .base import UnifiedMessage
+
+INSTAGRAM_IGNORED_PATTERNS = [
+    re.compile(r"^\s*sent an attachment\.?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*liked a message\s*$", re.IGNORECASE),
+    re.compile(r"^\s*reacted\s+.*?\s+to your message\s*$", re.IGNORECASE),
+    re.compile(r"^\s*(?:started|ended)\s+(?:an?\s+)?(?:audio\s+call|video\s+chat)\s*$", re.IGNORECASE),
+    re.compile(r"^\s*missed\s+(?:your\s+)?(?:video\s+chat|call)\s*$", re.IGNORECASE),
+    re.compile(r"^\s*this message was unsent\s*$", re.IGNORECASE),
+    re.compile(r"^\s*this message is no longer available\s*$", re.IGNORECASE),
+    re.compile(r"^\s*(?:shared|replied to)\s+(?:a\s+|their\s+)?story\s*$", re.IGNORECASE),
+    re.compile(r"^\s*null\s*$", re.IGNORECASE),
+]
 
 
 def fix_meta_mojibake(text: str) -> str:
@@ -21,7 +34,8 @@ def parse_instagram_json(
 ) -> List[UnifiedMessage]:
     """
     Parses Instagram messages.json thread data into UnifiedMessage objects.
-    Maps reactions, stories, shared media, and audio into structured text placeholders.
+    Strictly keeps authentic human text messages. Filters out reels, posts,
+    attachment notices, call notices, and stories.
     """
     if isinstance(json_data, str):
         data = json.loads(json_data)
@@ -67,8 +81,19 @@ def parse_instagram_json(
 
         text = raw_content.strip()
 
-        # Check if the content is just an Instagram link or reel
-        if text.startswith("http://") or text.startswith("https://") or "instagram.com/reel" in text.lower() or "instagram.com/p/" in text.lower() or "instagram.com/stories" in text.lower():
+        # Filter out Instagram system export notifications
+        if any(p.search(text) for p in INSTAGRAM_IGNORED_PATTERNS):
+            continue
+
+        # Check if the content is just a URL or reel link
+        if (
+            text.startswith("http://")
+            or text.startswith("https://")
+            or "instagram.com/reel" in text.lower()
+            or "instagram.com/p/" in text.lower()
+            or "instagram.com/stories" in text.lower()
+            or "threads.net/" in text.lower()
+        ):
             continue
 
         is_user = False

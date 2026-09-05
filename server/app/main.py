@@ -79,9 +79,13 @@ async def import_whatsapp(
     cfg = AppConfig.load()
     storage = LocalStorage()
     storage.save_profile(profile)
+    # Fast batch save all exchange pairs to SQLite immediately
+    storage.save_exchange_pairs(pairs, embeddings=None)
 
+    # Background non-blocking vector embedding for recent pairs
     retriever = VectorRetriever(storage, ollama_url=cfg.ollama_url, embed_model=cfg.embed_model)
-    await retriever.index_pairs(pairs)
+    import asyncio
+    asyncio.create_task(retriever.index_pairs_background(pairs[:50]))
 
     return {
         "status": "success",
@@ -120,9 +124,11 @@ async def import_instagram(
     cfg = AppConfig.load()
     storage = LocalStorage()
     storage.save_profile(profile)
+    storage.save_exchange_pairs(pairs, embeddings=None)
 
     retriever = VectorRetriever(storage, ollama_url=cfg.ollama_url, embed_model=cfg.embed_model)
-    await retriever.index_pairs(pairs)
+    import asyncio
+    asyncio.create_task(retriever.index_pairs_background(pairs[:50]))
 
     return {
         "status": "success",

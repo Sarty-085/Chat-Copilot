@@ -4,6 +4,7 @@ import unittest
 from app.tests.test_whatsapp_parser import (
     test_whatsapp_parsing_bracketed_and_multiline,
     test_whatsapp_parsing_dash_and_system_filtering,
+    test_whatsapp_advanced_syntax_filtering,
 )
 from app.tests.test_instagram_parser import test_instagram_parsing_reactions_and_shares
 from app.tests.test_turn_merger_and_style import (
@@ -18,6 +19,9 @@ class TestChatPilot(unittest.TestCase):
 
     def test_whatsapp_dash_system(self):
         test_whatsapp_parsing_dash_and_system_filtering()
+
+    def test_whatsapp_advanced_syntax(self):
+        test_whatsapp_advanced_syntax_filtering()
 
     def test_instagram_parser(self):
         test_instagram_parsing_reactions_and_shares()

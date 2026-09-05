@@ -24,6 +24,13 @@ FORMAL_WORDS = {
     "certainly", "apologies", "assistance", "received", "confirm", "schedule", "regarding"
 }
 
+EXCLUDED_PHRASE_WORDS = {
+    "the", "a", "an", "to", "in", "it", "is", "of", "and", "or", "for", "on", "at",
+    "media", "omitted", "ommited", "omited", "message", "deleted", "attached", "file",
+    "http", "https", "www", "null", "undefined", "image", "video", "sticker", "audio",
+    "voice", "call", "document", "contact", "card", "view", "poll"
+}
+
 
 class ContactStyleProfile(BaseModel):
     contact_name: str
@@ -58,23 +65,45 @@ class ContactStyleProfile(BaseModel):
         notes = f"\n- User-customized guidance: {self.custom_tone_notes}" if self.custom_tone_notes else ""
 
         return f"""### Contact-Specific Style Profile (Speaking to {self.contact_name}):
-- Overall Tone: {formality_desc} (formality index: {self.formality_score:.2f})
-- Typical Length: ~{int(self.avg_words_per_reply)} words (~{int(self.avg_chars_per_reply)} characters). Keep replies succinct.
+- Formality Level: {formality_desc} (score: {self.formality_score:.2f})
+- Typical Reply Length: ~{self.avg_words_per_reply:.1f} words ({self.avg_chars_per_reply:.0f} chars)
+- Emoji Usage: {emoji_desc}
 - Capitalization: {caps_desc}
-- Punctuation Habit: {self.punctuation_style}
-- Emojis: {emoji_desc}
-- Characteristic Catchphrases/Vocabulary: {phrases_desc}{notes}"""
+- Punctuation & Cadence: {self.punctuation_style}
+- Common Catchphrases: {phrases_desc}{notes}
+"""
+
+
+def is_non_conversational_turn(text: str) -> bool:
+    """Checks if turn contains only media omitted or export syntaxes."""
+    t = text.strip().lower()
+    if not t:
+        return True
+    if "[media_omitted]" in t or "<media omitted>" in t or "<media ommited>" in t:
+        clean = re.sub(r"\[media_omitted\]|<media\s+om+i+t+ed>", "", t).strip()
+        if not clean:
+            return True
+    if re.search(r"^\s*<this\s+message\s+was\s+(?:om+i+t+ed|deleted)>\s*$", t):
+        return True
+    if re.search(r"^\s*this\s+message\s+was\s+(?:om+i+t+ed|deleted)\s*$", t):
+        return True
+    if re.search(r"^\s*(?:image|video|audio|voice\s+(?:call|message)|sticker|document|contact\s+card|gif)\s+omitted\s*$", t):
+        return True
+    return False
 
 
 def build_style_profile_from_turns(turns: List[UnifiedTurn], contact_name: str) -> ContactStyleProfile:
     """
-    Analyzes all user replies directed to a specific contact to construct their style profile.
+    Analyzes all genuine user replies directed to a specific contact to construct their style profile.
+    Filters out non-conversational media placeholders and system export strings.
     """
-    # Filter only turns where is_user is True
-    user_turns = [t for t in turns if t.is_user and t.contact_name.lower() == contact_name.lower()]
+    # Filter only turns where is_user is True and not non-conversational
+    user_turns = [
+        t for t in turns
+        if t.is_user and t.contact_name.lower() == contact_name.lower() and not is_non_conversational_turn(t.text)
+    ]
 
     if not user_turns:
-        # Fallback default profile if no history
         return ContactStyleProfile(
             contact_name=contact_name,
             total_messages_analyzed=0,
@@ -83,7 +112,7 @@ def build_style_profile_from_turns(turns: List[UnifiedTurn], contact_name: str) 
             emoji_density=0.3,
             formality_score=0.35,
             punctuation_style="casual",
-            custom_tone_notes="Match the contact's tone naturally."
+            custom_tone_notes=""
         )
 
     total_chars = 0
@@ -102,7 +131,8 @@ def build_style_profile_from_turns(turns: List[UnifiedTurn], contact_name: str) 
     n_gram_counter = Counter()
 
     for turn in user_turns:
-        text = turn.text.strip()
+        # Clean any inline media placeholders before analyzing text metrics
+        text = re.sub(r"\[media_omitted\]|<media\s+om+i+t+ed>", "", turn.text, flags=re.IGNORECASE).strip()
         if not text:
             continue
 
@@ -131,10 +161,12 @@ def build_style_profile_from_turns(turns: List[UnifiedTurn], contact_name: str) 
         for em in emojis_found:
             emoji_counter[em] += 1
 
-        # Word n-grams (2-word phrases)
+        # Word n-grams (2-word phrases), excluding export syntaxes
         for i in range(len(words) - 1):
-            phrase = f"{words[i]} {words[i+1]}"
-            n_gram_counter[phrase] += 1
+            w1, w2 = words[i], words[i + 1]
+            if w1 not in EXCLUDED_PHRASE_WORDS and w2 not in EXCLUDED_PHRASE_WORDS:
+                phrase = f"{w1} {w2}"
+                n_gram_counter[phrase] += 1
 
         # Slang vs formal counts
         for w in words:
@@ -144,10 +176,10 @@ def build_style_profile_from_turns(turns: List[UnifiedTurn], contact_name: str) 
                 formal_matches += 1
 
     n = len(user_turns)
-    avg_chars = total_chars / n
-    avg_words = total_words / n
-    emoji_density = total_emojis / n
-    caps_rate = caps_count / n
+    avg_chars = total_chars / n if n else 0.0
+    avg_words = total_words / n if n else 0.0
+    emoji_density = total_emojis / n if n else 0.0
+    caps_rate = caps_count / n if n else 0.5
 
     # Determine punctuation style
     if no_punct_count > (n * 0.5):
@@ -160,7 +192,6 @@ def build_style_profile_from_turns(turns: List[UnifiedTurn], contact_name: str) 
         punct_style = "natural, minimal punctuation"
 
     # Formality score (0.0 to 1.0)
-    # Baseline 0.35 + adjustments
     formality = 0.35
     if slang_matches > (n * 0.5):
         formality -= 0.15
@@ -172,10 +203,10 @@ def build_style_profile_from_turns(turns: List[UnifiedTurn], contact_name: str) 
         formality += 0.15
     formality = max(0.05, min(0.95, formality))
 
-    # Top phrases
+    # Top catchphrases (excluding non-human export words)
     filtered_phrases = [
-        phrase for phrase, count in n_gram_counter.most_common(15)
-        if count >= 2 and not all(w in {"the", "a", "an", "to", "in", "it", "is"} for w in phrase.split())
+        phrase for phrase, count in n_gram_counter.most_common(20)
+        if count >= 2 and not any(w in EXCLUDED_PHRASE_WORDS for w in phrase.split())
     ]
 
     return ContactStyleProfile(

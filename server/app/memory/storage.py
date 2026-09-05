@@ -84,24 +84,37 @@ class LocalStorage:
             return [ContactStyleProfile(**json.loads(r["profile_json"])) for r in rows]
 
     def save_exchange_pairs(self, pairs: List[ExchangePair], embeddings: Optional[List[List[float]]] = None):
+        if not pairs:
+            return
         with self._get_conn() as conn:
             cursor = conn.cursor()
+            rows = []
             for i, pair in enumerate(pairs):
-                emb_json = json.dumps(embeddings[i]) if embeddings and i < len(embeddings) else None
-                cursor.execute(
-                    """
-                    INSERT INTO exchange_pairs (contact_name, platform, incoming_text, reply_text, timestamp, embedding_json)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        pair.contact_name,
-                        pair.platform,
-                        pair.incoming_text,
-                        pair.reply_text,
-                        pair.timestamp.isoformat(),
-                        emb_json,
-                    ),
-                )
+                emb_json = json.dumps(embeddings[i]) if embeddings and i < len(embeddings) and embeddings[i] is not None else None
+                rows.append((
+                    pair.contact_name,
+                    pair.platform,
+                    pair.incoming_text,
+                    pair.reply_text,
+                    pair.timestamp.isoformat(),
+                    emb_json,
+                ))
+            cursor.executemany(
+                """
+                INSERT INTO exchange_pairs (contact_name, platform, incoming_text, reply_text, timestamp, embedding_json)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                rows,
+            )
+            conn.commit()
+
+    def update_pair_embedding(self, incoming_text: str, embedding: List[float]):
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE exchange_pairs SET embedding_json = ? WHERE incoming_text = ? AND embedding_json IS NULL",
+                (json.dumps(embedding), incoming_text),
+            )
             conn.commit()
 
     def get_exchange_pairs(self, contact_name: str) -> List[dict]:
